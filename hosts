@@ -1,2 +1,2 @@
 [osticket_server]
-ubuntu-osticket ansible_host=192.168.3.70 ansible_user=osboxes ansible_become_password=osboxes.org ansible_ssh_private_key_file=~/.ssh/id>
+ubuntu-osticket ansible_host=<IP_host> ansible_user=<user> ansible_become_password=<password> ansible_ssh_private_key_file=~/.ssh/id>
