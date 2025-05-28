@@ -1,0 +1,120 @@
+---
+- name: Instalar osTicket en Ubuntu
+  hosts: osticket_server
+  become: true
+
+  vars:
+    apache_conf_file: /etc/apache2/sites-available/osticket.conf
+
+  tasks:
+    - name: Actualizar apt e instalar requerimientos
+      apt:
+        update_cache: yes
+
+    - name: Instalar software-properties-common
+      apt:
+        name: software-properties-common
+        state: present
+
+    - name: Instalar Apache, MySQL
+      apt:
+        name:
+          - apache2
+          - mysql-server
+          - unzip
+          - wget
+        state: present
+
+    - name: Instalar PHP (script)
+      script: ./install_php.sh
+
+    - name: Crear usuario de base de datos
+      mysql_user:
+        name: osticketuser
+        password: osticketpass
+        priv: 'osticket.*:ALL'
+        state: present
+        login_unix_socket: /run/mysqld/mysqld.sock
+
+    - name: Crear base de datos osticket
+      mysql_db:
+        name: osticket
+        state: present
+        login_user: osticketuser
+        login_password: osticketpass
+
+    - name: Descargar osTicket
+      get_url:
+        url: https://github.com/osTicket/osTicket/releases/download/v1.18.1/osTicket-v1.18.1.zip
+        dest: /tmp/osticket.zip
+
+    - name: Descomprimir osTicket
+      unarchive:
+        src: /tmp/osticket.zip
+        dest: /var/www/html/
+        remote_src: yes
+        creates: /var/www/html/upload
+
+    - name: Mover archivos
+      command: mv /var/www/html/upload /var/www/html/osticket creates=/var/www/html/osticket
+
+    - name: Crear archivo de configuración de Apache
+      copy:
+        dest: "{{ apache_conf_file }}"
+        content: |
+          <VirtualHost *:80>
+              ServerAdmin admin@localhost
+              DocumentRoot /var/www/html/osticket
+              <Directory "/var/www/html/osticket">
+                  Options Indexes FollowSymLinks
+                  AllowOverride All
+                  Require all granted
+              </Directory>
+          </VirtualHost>
+
+    - name: Habilitar el sitio osticket
+      command: a2ensite osticket.conf
+      notify: Restart Apache
+
+    - name: Deshabilitar sitio default
+      command: a2dissite 000-default.conf
+      notify: Restart Apache
+
+    - name: Habilitar mod_rewrite
+      apache2_module:
+        name: rewrite
+        state: present
+      notify: Restart Apache
+
+    - name: Establecer permisos
+      file:
+        path: /var/www/html/osticket
+        owner: www-data
+        group: www-data
+        recurse: yes
+
+    - name: cambiar nombre de archivo
+      command: sudo mv /var/www/html/osticket/include/ost-sampleconfig.php /var/www/html/osticket/include/ost-config.php
+
+    - name: Permitir trafico HTTP
+      community.general.ufw:
+        rule: allow
+        port: 80
+        proto: tcp
+
+    - name: Permitir trafico HTTPS
+      community.general.ufw:
+        rule: allow
+        port: 443
+        proto: tcp
+
+    - name: Habilitar UFW (forzado)
+      community.general.ufw:
+        state: enabled
+        policy: allow
+
+  handlers:
+    - name: Restart Apache
+      service:
+        name: apache2
+        state: restarted
